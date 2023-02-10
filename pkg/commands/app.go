@@ -18,6 +18,7 @@ import (
 	"github.com/aquasecurity/trivy-db/pkg/metadata"
 	awscommands "github.com/aquasecurity/trivy/pkg/cloud/aws/commands"
 	"github.com/aquasecurity/trivy/pkg/commands/artifact"
+	"github.com/aquasecurity/trivy/pkg/commands/rest"
 	"github.com/aquasecurity/trivy/pkg/commands/server"
 	"github.com/aquasecurity/trivy/pkg/fanal/analyzer"
 	"github.com/aquasecurity/trivy/pkg/flag"
@@ -88,6 +89,7 @@ func NewApp(version string) *cobra.Command {
 		NewVersionCommand(globalFlags),
 		NewAWSCommand(globalFlags),
 		NewVMCommand(globalFlags),
+		NewRestCommand(globalFlags),
 	)
 	rootCmd.AddCommand(loadPluginCommands()...)
 
@@ -531,6 +533,44 @@ func NewServerCommand(globalFlags *flag.GlobalFlagGroup) *cobra.Command {
 	cmd.SetFlagErrorFunc(flagErrorFunc)
 	serverFlags.AddFlags(cmd)
 	cmd.SetUsageTemplate(fmt.Sprintf(usageTemplate, serverFlags.Usages(cmd)))
+
+	return cmd
+}
+
+func NewRestCommand(globalFlags *flag.GlobalFlagGroup) *cobra.Command {
+	restFlags := &flag.Flags{
+		CacheFlagGroup:  flag.NewCacheFlagGroup(),
+		DBFlagGroup:     flag.NewDBFlagGroup(),
+		RemoteFlagGroup: flag.NewServerFlags(),
+	}
+
+	cmd := &cobra.Command{
+		Use:     "rest [flags]",
+		Aliases: []string{"s"},
+		Short:   "REST mode",
+		Example: `  # Run REST server
+  $ trivy rest
+
+  # Listen on 0.0.0.0:10000
+  $ trivy rest --listen 0.0.0.0:10000
+`,
+		Args: cobra.ExactArgs(0),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			if err := restFlags.Bind(cmd); err != nil {
+				return xerrors.Errorf("flag bind error: %w", err)
+			}
+			options, err := restFlags.ToOptions(cmd.Version, args, globalFlags, outputWriter)
+			if err != nil {
+				return xerrors.Errorf("flag error: %w", err)
+			}
+			return rest.Run(cmd.Context(), options)
+		},
+		SilenceErrors: true,
+		SilenceUsage:  true,
+	}
+	cmd.SetFlagErrorFunc(flagErrorFunc)
+	restFlags.AddFlags(cmd)
+	cmd.SetUsageTemplate(fmt.Sprintf(usageTemplate, restFlags.Usages(cmd)))
 
 	return cmd
 }
